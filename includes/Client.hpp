@@ -30,6 +30,7 @@ public:
 	void set_last_time_sec(timeval& tv);
 
 	std::string get_root_path(std::string path);
+	std::string get_autoindex_root_path(std::string path);
 	int count_char(std::string str, char c);
 	
 	const char *get_client_address();

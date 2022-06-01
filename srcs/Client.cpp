@@ -93,6 +93,18 @@ std::string Client::get_root_path(std::string path)
 	return root;
 }
 
+std::string Client::get_autoindex_root_path(std::string path)
+{
+	std::string root = get_root_path("/");
+	if (path == "/")
+		return root;
+	else
+	{
+		root = root + "/" + path;
+		return root;
+	}
+}
+
 int Client::count_char(std::string str, char c)
 {
 	int cnt = 0;

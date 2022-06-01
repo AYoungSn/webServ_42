@@ -277,8 +277,8 @@ void ServerManager::treat_request()
 				}
 				else
 				{
-					if (is_response_timeout(clients[i]) == true)
-						send_error_page(408, clients[i], NULL);
+					// if (is_response_timeout(clients[i]) == true)
+					// 	send_error_page(408, clients[i], NULL);
 					if (clients[i].server->redirect_status != -1)
 						send_redirection(clients[i], req.method);
 					else if (req.method == "GET")
@@ -716,8 +716,8 @@ std::string ServerManager::find_path_in_root(std::string path, Client &client)
 void ServerManager::get_autoindex_page(Client &client, std::string path)
 {
 	std::cout << "path: " << path << "\n";
-	std::cout << "root path: " << client.get_root_path(path) << "\n";
-	std::string addr = client.get_root_path(path) + "/";
+	std::cout << "root path: " << client.get_autoindex_root_path(path) << "\n";
+	std::string addr = client.get_autoindex_root_path(path);
 	std::string result = "<!DOCTYPE html><html><head><meta charset=\"UTF-8\" />"
 		"<title>webserv</title></head><body><h1>webserv</h1><h2>Index of ";
 	result += path;
