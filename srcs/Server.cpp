@@ -29,7 +29,9 @@ void Server::create_socket()
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE;
-	if (getaddrinfo(host.c_str(), port.c_str(), &hints, &info) >= 0)
+	// memset(bind_addr, 0, sizeof(struct addrinfo*));
+	std::cout << "server_name(" << this->server_name.size() << "): " << this->server_name << "\n";
+	if (getaddrinfo(this->server_name.c_str(), port.c_str(), &hints, &info) >= 0)
 	{
 		std::cout << "> Creating socket...\n";
 		int new_socket = socket(info->ai_family, info->ai_socktype, info->ai_protocol);
