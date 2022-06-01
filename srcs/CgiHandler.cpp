@@ -165,6 +165,8 @@ std::string CgiHandler::read_from_CGI_process(int timeout_ms) {
 	timeout_tv.tv_usec = 1000 * timeout_ms;
 	while (rbytes > 0) {
 		rbytes = read(this->get_pipe_read_fd(), buf, CGI_READ_BUFFER_SIZE);
+		if (rbytes < 0)
+			return NULL;
 		ret += buf;
 		memset(buf, 0x00, CGI_READ_BUFFER_SIZE);
 	}

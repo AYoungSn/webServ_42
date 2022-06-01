@@ -46,7 +46,7 @@ public:
 private:
 	void add_fd_selectPoll(int fd, fd_set* fds);
 	void run_selectPoll(fd_set *reads, fd_set *writes);
-	void send_cgi_response(Client& client, CgiHandler& ch);
+	size_t send_cgi_response(Client& client, CgiHandler& ch);
 	void send_error_page(int code, Client &Client, std::vector<MethodType> *allow_methods);
 	void send_405_error_page(int code, Client &Client, std::vector<MethodType> allow_methods);
 	void send_redirection(Client &client, std::string request_method);

@@ -215,11 +215,19 @@ void ServerManager::treat_request()
 			clients[i].set_received_size(clients[i].get_received_size() + r);
 			int recv_size = clients[i].get_received_size();
 			char *reqt = clients[i].request;
-			if (r < 1)
+			if (r < 0)
 			{
 				std::cout << "> Unexpected disconnect from (" << r << ")[" << clients[i].get_client_address() << "].\n";
 				fprintf(stderr, "[ERROR] recv() failed.\n");
 				send_error_page(500, clients[i], NULL);
+				drop_client(clients[i]);
+				i--;
+			}
+			else if (r == 0)
+			{
+				std::cout << "> The connection has been closed or 0 bytes were passed to send() (" << r << ")[" << clients[i].get_client_address() << "].\n";
+				fprintf(stderr, "[ERROR] recv() failed.\n");
+				send_error_page(400, clients[i], NULL);
 				drop_client(clients[i]);
 				i--;
 			}
@@ -257,14 +265,15 @@ void ServerManager::treat_request()
 				if (loc && handle_CGI(&req, loc))
 				{
 					std::cout << "cgi\n";
+					size_t cgi_res;
 					CgiHandler cgi(req, *loc);
 					int read_fd = cgi.excute_CGI(req, *loc);
 					if (read_fd == -1)
 						send_error_page(404, clients[i], NULL);
-					if (is_response_timeout(clients[i]) == true)
+					else if (is_response_timeout(clients[i]) == true)
 						send_error_page(408, clients[i], NULL);
-					else
-						send_cgi_response(clients[i], cgi);
+					else if ((cgi_res = send_cgi_response(clients[i], cgi)))
+						send_error_page(cgi_res, clients[i], NULL);
 				}
 				else
 				{
@@ -290,7 +299,7 @@ static void set_signal_kill_child_process(int sig)
     kill(-1,SIGKILL);
 }
 
-void ServerManager::send_cgi_response(Client& client, CgiHandler& ch)
+size_t ServerManager::send_cgi_response(Client& client, CgiHandler& ch)
 {
 	this->add_fd_selectPoll(ch.get_pipe_write_fd(), &(this->writes));
 	this->run_selectPoll(&(this->reads), &(this->writes));
@@ -302,9 +311,7 @@ void ServerManager::send_cgi_response(Client& client, CgiHandler& ch)
 		alarm(30);
 		signal(SIGALRM, SIG_DFL);
 		close(ch.get_pipe_write_fd());
-		send_error_page(500, client, NULL);
-		drop_client(client);
-		return ;
+		return 500;
 	}
 	ch.write_to_CGI_process();
 	FD_ZERO(&this->writes);
@@ -315,23 +322,29 @@ void ServerManager::send_cgi_response(Client& client, CgiHandler& ch)
 		fprintf(stderr, "[ERROR] reading from cgi failed. (%d)%s\n", errno, strerror(errno));
 		close(ch.get_pipe_read_fd());
 		close(ch.get_pipe_write_fd());
-		send_error_page(500, client, NULL);
-		drop_client(client);
-		return ;
+		return 500;
 	}
 	std::string cgi_ret = ch.read_from_CGI_process(10);
+	if (cgi_ret.empty())
+		return 500;
 	close(ch.get_pipe_read_fd());
 	close(ch.get_pipe_write_fd());
 	std::cout << "successfully read\n";
-	if (cgi_ret.compare("cgi: failed") == 0) send_error_page(400, client, NULL);
+	if (cgi_ret.compare("cgi: failed") == 0) return 400;
 	else
 	{
 		Response res(status_info[atoi(get_status_cgi(cgi_ret).c_str())]);
 		create_cgi_msg(res, cgi_ret, client);
 		std::string result = res.serialize();
-		send(client.get_socket(), result.c_str(), result.size(), 0);
-		std::cout << ">> cgi responsed\n";
+		ssize_t send_ret = send(client.get_socket(), result.c_str(), result.size(), 0);
+		if (send_ret < 0)
+			return 500;
+		else if (send_ret == 0)
+			return 400;
+		else
+			std::cout << ">> cgi responsed\n";
 	}
+	return 0;
 }
 
 std::string ServerManager::get_status_cgi(std::string& cgi_ret)
@@ -388,6 +401,7 @@ bool ServerManager::is_response_timeout(Client& client)
 void ServerManager::send_redirection(Client &client, std::string request_method)
 {
 	std::cout << ">> send redirection response\n";
+	size_t send_ret;
 	Response response(status_info[client.server->redirect_status]);
 	if (client.server->redirect_status == 300)
 		response.make_status_body(client.server->redirect_url);
@@ -402,6 +416,10 @@ void ServerManager::send_redirection(Client &client, std::string request_method)
 
 	std::string result = response.serialize();
 	send(client.get_socket(), result.c_str(), result.size(), 0);
+	if (send_ret < 0)
+		send_error_page(500, client, NULL);
+	else if (send_ret == 0)
+		send_error_page(400, client, NULL);
 }
 
 void ServerManager::send_error_page(int code, Client &client, std::vector<MethodType> *allow_methods)
@@ -447,7 +465,11 @@ void ServerManager::send_error_page(int code, Client &client, std::vector<Method
 	}
 
 	std::string result = response.serialize();
-	send(client.get_socket(), result.c_str(), result.size(), 0);
+	size_t send_ret = send(client.get_socket(), result.c_str(), result.size(), 0);
+	if (send_ret < 0)
+		std::cerr << "> Unexpected disconnect!\n";
+	else if (send_ret == 0)
+		std::cerr << "> The connection has been closed or 0 bytes were passed to send()!\n";
 }
 
 int	ServerManager::is_allowed_method(std::vector<MethodType> allow_methods, std::string method) 
@@ -563,9 +585,20 @@ void ServerManager::get_method(Client &client, std::string path)
 
 		char buffer[BSIZE];
 		int r = fread(buffer, 1, BSIZE, fp);
+		size_t send_ret;
 		while (r)
 		{
 			send(client.get_socket(), buffer, r, 0);
+			if (send_ret < 0)
+			{
+				send_error_page(500, client, NULL);
+				break;
+			}
+			else if (send_ret == 0)
+			{
+				send_error_page(400, client, NULL);
+				break;
+			}
 			r = fread(buffer, 1, BSIZE, fp);
 		}
 	}
@@ -607,7 +640,11 @@ void ServerManager::post_method(Client &client, Request &request)
 	Response response(status_info[201]);
 	response.append_header("Connection", "close");
 	std::string header = response.make_header();
-	send(client.get_socket(), header.c_str(), header.size(), 0);
+	size_t send_ret = send(client.get_socket(), header.c_str(), header.size(), 0);
+	if (send_ret < 0)
+		send_error_page(500, client, NULL);
+	else if (send_ret == 0)
+		send_error_page(400, client, NULL);
 	std::cout << "> " << full_path << " posted\n";
 }
 
@@ -630,7 +667,11 @@ void ServerManager::delete_method(Client &client, std::string path)
 	response.append_header("Connection", "close");
 
 	std::string header = response.make_header();
-	send(client.get_socket(), header.c_str(), header.size(), 0);
+	size_t send_ret = send(client.get_socket(), header.c_str(), header.size(), 0);
+	if (send_ret < 0)
+		send_error_page(500, client, NULL);
+	else if (send_ret == 0)
+		send_error_page(400, client, NULL);
 	std::cout << "> " << full_path << " deleted\n";
 }
 
