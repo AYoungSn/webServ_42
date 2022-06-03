@@ -178,9 +178,45 @@ void ServerManager::drop_client(Client client)
 ** Request Treatment methods
 */
 
+bool static is_request_done(char *request)
+{
+	std::cout << "is_request_done: request: " << request << "\n";
+	char *body = strstr(request, "\r\n\r\n");
+	if (!body)
+		return false;
+	if (strnstr(request, "chunked", strlen(request) - strlen(body)))
+	{
+		body += 4;
+		if (strstr(body, "\r\n\r\n"))
+			return true;
+		return false;
+	}
+	else if (strnstr(request, "Content-Length", strlen(request) - strlen(body)))
+	{
+		body += 4;
+		if (strstr(body, "\r\n\r\n"))
+			return true;
+		char *start = strnstr(request, "Content-Length: ", strlen(request) - strlen(body)) + 16;
+		char *end = strstr(start, "\r\n");
+		char *len = strndup(start, end - start);
+		int len_i = atoi(len);
+		if ((size_t)len_i <= strlen(body))
+			return true;
+		return false;
+	}
+	else if (strnstr(request, "boundary=", strlen(request) - strlen(body)))
+	{
+		body += 4;
+		if (strstr(body, "\r\n\r\n"))
+			return true;
+		return false;
+	}
+	return true;
+}
+
 void ServerManager::treat_request()
 {
-	for (unsigned long i = 0; i < clients.size() ; i++)
+	for (unsigned long i = 0  ; i < clients.size() ; i++)
 	{
 		if (FD_ISSET(clients[i].get_socket(), &reads))
 		{
@@ -418,51 +454,27 @@ void ServerManager::post_method(Client &client, Request &request)
 	}
 
 	std::string full_path = find_path_in_root(request.path, client);
-
-	struct stat buf;
-	lstat(full_path.c_str(), &buf);
-	if (S_ISDIR(buf.st_mode))
+	size_t index = full_path.find_last_of("/");
+	if (index == std::string::npos)
 	{
-		if (request.headers.find("Content-Type") != request.headers.end())
-		{
-			size_t begin = request.headers["Content-Type"].find("boundary=") + 9;
-			if (begin != std::string::npos)
-			{
-				std::string boundary = request.headers["Content-Type"].substr(begin);
-				begin = 0;
-				size_t end = 0;
-				std::string name;
-				while (true)
-				{
-					begin = request.body.find("name=", begin) + 6;
-					end = request.body.find_first_of(";", begin) - 1;
-					if (begin == std::string::npos || end == std::string::npos)
-						break;
-					name = request.body.substr(begin, end - begin);
-					begin = request.body.find("\r\n\r\n", end) + 4;
-					end = request.body.find(boundary, begin);
-					if (begin == std::string::npos || end == std::string::npos)
-						break;
-					write_file_in_path(client, request.body.substr(begin, end - begin - 3), full_path + "/" + name);
-					if (request.body[end + boundary.size()] == '-')
-						break;
-				}
-			}
-			else
-			{
-				send_error_page(500, client);
-				return;
-			}
-		}
-		else
-		{
-			send_error_page(500, client);
-			return;
-		}
+		send_error_page(500, client);
+		return;
 	}
-	else
-		write_file_in_path(client, request.body, full_path);
+	std::string file_name = full_path.substr(index + 1);
+	std::string folder_path = full_path.substr(0, index);
 
+	std::string command = "mkdir -p " + folder_path;
+	system(command.c_str());
+	FILE *fp = fopen(full_path.c_str(), "w");
+	if (!fp)
+	{
+		send_error_page(500, client);
+		return;
+	}
+
+	fwrite(request.body.c_str(), request.body.size(), 1, fp);
+	fclose(fp);
+	
 	Response response(status_info[201]);
 	response.append_header("Connection", "close");
 	std::string header = response.make_header();
@@ -471,8 +483,7 @@ void ServerManager::post_method(Client &client, Request &request)
 		send_error_page(500, client, NULL);
 	else if (send_ret == 0)
 		send_error_page(400, client, NULL);
-	else
-		std::cout << "> " << full_path << " posted\n";
+	std::cout << "> " << full_path << " posted\n";
 }
 
 void ServerManager::delete_method(Client &client, std::string path)

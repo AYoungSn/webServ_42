@@ -34,50 +34,47 @@ public:
 	ServerManager(std::vector<Server> servers);
 	~ServerManager();
 
-	void	wait_to_client();
-	void	accept_sockets();
-	void	drop_client(Client client);
+	void wait_to_client();
+	void accept_sockets();
+	void drop_client(Client client);
 
-	void	create_servers();
-	void	close_servers();
+	void create_servers();
+	void close_servers();
 
-	void	treat_request();
-	void	print_servers_info();
+	void treat_request();
+	void print_servers_info();
 
 private:
-	void	add_fd_selectPoll(int fd, fd_set* fds);
-	void	run_selectPoll(fd_set *reads, fd_set *writes);
+	void add_fd_selectPoll(int fd, fd_set* fds);
+	void run_selectPoll(fd_set *reads, fd_set *writes);
 
-	void	get_method(Client &client, std::string path);
-	void	post_method(Client &client, Request &request);
-	void	delete_method(Client &client, std::string path);
+	void get_method(Client &client, std::string path);
+	void post_method(Client &client, Request &request);
+	void delete_method(Client &client, std::string path);
 
-	void	send_autoindex_page(Client &client, std::string path);
-	void	send_redirection(Client &client, std::string request_method);
-	void	send_error_page(int code, Client &Client, std::vector<MethodType> *allow_methods = NULL);
+	void send_autoindex_page(Client &client, std::string path);
+	void send_redirection(Client &client, std::string request_method);
+	void send_error_page(int code, Client &Client, std::vector<MethodType> *allow_methods = NULL);
 
-	void	create_cgi_msg(Response& res, std::string& cgi_ret, Client &client);
-	int		send_cgi_response(Client& client, CgiHandler& ch);
+	bool is_cgi(Request *request, Location *loc);
+	void create_cgi_msg(Response& res, std::string& cgi_ret, Client &client);
+	int send_cgi_response(Client& client, CgiHandler& ch);
 	
 	/*
 	** ServerManager_helper
 	*/
 
 	bool	is_allowed_method(std::vector<MethodType> allow_methods, std::string method);
-	bool	is_request_done(char *request);
 	bool	is_response_timeout(Client& client);
 	bool	is_loc_check(std::string path, Client &client);
-	bool	is_cgi(Request *request, Location *loc);
 
-	std::string	methodtype_to_s(MethodType method);
+	std::string methodtype_to_s(MethodType method);
 
-	const char	*find_content_type(const char *path);
-	std::string	find_path_in_root(std::string path, Client &client);
+	const char *find_content_type(const char *path);
+	std::string find_path_in_root(std::string path, Client &client);
 
-	std::string	read_with_timeout(int fd, int timeout_ms);
-	std::string	get_status_cgi(std::string& cgi_ret);
-
-	void	write_file_in_path(Client &client, std::string content, std::string path);
+	std::string read_with_timeout(int fd, int timeout_ms);
+	std::string get_status_cgi(std::string& cgi_ret);
 };
 
 #endif

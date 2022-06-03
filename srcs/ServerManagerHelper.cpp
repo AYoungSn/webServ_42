@@ -35,39 +35,6 @@ bool	ServerManager::is_loc_check(std::string path, Client &client)
 	return false;
 }
 
-bool	ServerManager::is_request_done(char *request)
-{
-	char *body = strstr(request, "\r\n\r\n");
-	if (!body)
-		return false;
-	body += 4;
-	if (strnstr(request, "chunked", strlen(request) - strlen(body)))
-	{
-		if (strstr(body, "\r\n\r\n"))
-			return true;
-		return false;
-	}
-	else if (strnstr(request, "Content-Length", strlen(request) - strlen(body)))
-	{
-		if (strstr(body, "\r\n\r\n"))
-			return true;
-		char *start = strnstr(request, "Content-Length: ", strlen(request) - strlen(body)) + 16;
-		char *end = strstr(start, "\r\n");
-		char *len = strndup(start, end - start);
-		int len_i = atoi(len);
-		if ((size_t)len_i <= strlen(body))
-			return true;
-		return false;
-	}
-	else if (strnstr(request, "boundary=", strlen(request) - strlen(body)))
-	{
-		if (strstr(body, "\r\n\r\n"))
-			return true;
-		return false;
-	}
-	return true;
-}
-
 bool ServerManager::is_response_timeout(Client& client)
 {
 	static timeval tv;
@@ -80,6 +47,7 @@ bool ServerManager::is_response_timeout(Client& client)
 
 bool	ServerManager::is_cgi(Request *request, Location *loc)
 {
+	std::cout << "handle_cgi\n";
 	for (std::map<std::string, std::string>::iterator it = loc->cgi_info.begin();
 	it != loc->cgi_info.end(); it++)
 	{
@@ -145,24 +113,4 @@ std::string ServerManager::get_status_cgi(std::string& cgi_ret)
 	status_line.erase(0, 8);
 	status_line.erase(status_line.length() - 1, 1);
 	return status_line;
-}
-
-void	ServerManager::write_file_in_path(Client &client, std::string content, std::string path)
-{
-	std::cout << "> write in: " << path << "\n";
-	size_t index = path.find_last_of("/");
-	std::string file_name = path.substr(index + 1);
-	std::string folder_path = path.substr(0, index);
-
-	std::string command = "mkdir -p " + folder_path;
-	system(command.c_str());
-	FILE *fp = fopen(path.c_str(), "w");
-	if (!fp)
-	{
-		send_error_page(500, client);
-		return;
-	}
-
-	fwrite(content.c_str(), content.size(), 1, fp);
-	fclose(fp);
 }
