@@ -1,4 +1,5 @@
 <?php
+
 	header("Status: 200 OK");
 
 	$title = $_GET['title'];
@@ -6,4 +7,5 @@
 
 	echo "title: $title<br>";
 	echo "content: $content";
+
 ?>
